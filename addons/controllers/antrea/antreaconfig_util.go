@@ -21,12 +21,56 @@ import (
 
 // AntreaConfigSpec defines the desired state of AntreaConfig
 type antreaConfigSpec struct {
-	InfraProvider string `yaml:"infraProvider"`
-	Antrea        antrea `yaml:"antrea,omitempty"`
+	InfraProvider string    `yaml:"infraProvider"`
+	Antrea        antrea    `yaml:"antrea,omitempty"`
+	AntreaNsx     antreaNsx `yaml:"antreaNsx,omitempty"`
 }
 
 type antrea struct {
 	AntreaConfigDataValue antreaConfigDataValue `yaml:"config,omitempty"`
+}
+
+type antreaNsx struct {
+	Enable          bool                   `yaml:"enable,omitempty"`
+	BootstrapFrom   AntreaNsxBootstrapFrom `yaml:"bootstrapFrom,omitempty"`
+	AntreaNsxConfig antreaNsxConfig        `yaml:"config,omitempty"`
+}
+
+type antreaNsxProvider struct {
+	ApiVersion string `yaml:"apiVersion,omitempty"`
+	Kind       string `yaml:"kind,omitempty"`
+}
+
+type AntreaNsxBootstrapFrom struct {
+	// providerRef is used with uTKG, which will be filled by NCP operator
+	ProviderRef *antreaNsxProvider `yaml:"providerRef,omitempty"`
+	// inline is used with TKGm, user need to fill in manually
+	Inline *antreaNsxInline `yaml:"inline,omitempty"`
+}
+
+type AntreaNsxProvider struct {
+	// api version for nsxServiceAccount, its value is "nsx.vmware.com/v1alpha1" now
+	ApiVersion string `yaml:"apiVersion,omitempty"`
+	// its value is NsxServiceAccount
+	Kind string `yaml:"kind,omitempty"`
+	// the name for NsxServiceAccount
+	Name string `yaml:"name,omitempty"`
+}
+
+type nsxCertRef struct {
+	// tls.crt is cert file to access nsx manager
+	TLSCert string `yaml:"tls.crt,omitempty"`
+	// tls.key is key file to access nsx manager
+	TLSKey string `yaml:"tls.key,omitempty"`
+}
+
+type antreaNsxInline struct {
+	NsxManagers []string   `yaml:"nsxManagers,omitempty"`
+	ClusterName string     `yaml:"clusterName,omitempty"`
+	NsxCertRef  nsxCertRef `yaml:"NsxCert,omitempty"`
+}
+
+type antreaNsxConfig struct {
 }
 
 type antreaEgress struct {
@@ -73,9 +117,9 @@ type antreaConfigDataValue struct {
 	Multicast                antreaMulticast     `yaml:"multicast,omitempty"`
 	MultiCluster             antreaMultiCluster  `yaml:"multicluster,omitempty"`
 	KubeAPIServerOverride    string              `yaml:"kubeAPIServerOverride,omitempty"`
-	transportInterface       string              `yaml:"transportInterface,omitempty"`
-	transportInterfaceCIDRs  []string            `yaml:"transportInterfaceCIDRs,omitempty"`
-	multicastInterfaces      []string            `yaml:"multicastInterfaces,omitempty"`
+	TransportInterface       string              `yaml:"transportInterface,omitempty"`
+	TransportInterfaceCIDRs  []string            `yaml:"transportInterfaceCIDRs,omitempty"`
+	MulticastInterfaces      []string            `yaml:"multicastInterfaces,omitempty"`
 	TunnelType               string              `yaml:"tunnelType,omitempty"`
 	TrafficEncryptionMode    string              `yaml:"trafficEncryptionMode,omitempty"`
 	EnableUsageReporting     bool                `yaml:"enableUsageReporting,omitempty"`
@@ -196,9 +240,9 @@ func mapAntreaConfigSpec(cluster *clusterv1beta1.Cluster, config *cniv1alpha1.An
 	configSpec.Antrea.AntreaConfigDataValue.MultiCluster.Enable = config.Spec.Antrea.AntreaConfigDataValue.MultiCluster.Enable
 	configSpec.Antrea.AntreaConfigDataValue.MultiCluster.Namespace = config.Spec.Antrea.AntreaConfigDataValue.MultiCluster.Namespace
 	configSpec.Antrea.AntreaConfigDataValue.KubeAPIServerOverride = config.Spec.Antrea.AntreaConfigDataValue.KubeAPIServerOverride
-	configSpec.Antrea.AntreaConfigDataValue.transportInterface = config.Spec.Antrea.AntreaConfigDataValue.TransportInterface
-	configSpec.Antrea.AntreaConfigDataValue.transportInterfaceCIDRs = config.Spec.Antrea.AntreaConfigDataValue.TransportInterfaceCIDRs
-	configSpec.Antrea.AntreaConfigDataValue.multicastInterfaces = config.Spec.Antrea.AntreaConfigDataValue.MulticastInterfaces
+	configSpec.Antrea.AntreaConfigDataValue.TransportInterface = config.Spec.Antrea.AntreaConfigDataValue.TransportInterface
+	configSpec.Antrea.AntreaConfigDataValue.TransportInterfaceCIDRs = config.Spec.Antrea.AntreaConfigDataValue.TransportInterfaceCIDRs
+	configSpec.Antrea.AntreaConfigDataValue.MulticastInterfaces = config.Spec.Antrea.AntreaConfigDataValue.MulticastInterfaces
 	configSpec.Antrea.AntreaConfigDataValue.TunnelType = config.Spec.Antrea.AntreaConfigDataValue.TunnelType
 	configSpec.Antrea.AntreaConfigDataValue.EnableUsageReporting = config.Spec.Antrea.AntreaConfigDataValue.EnableUsageReporting
 	configSpec.Antrea.AntreaConfigDataValue.WireGuard.Port = config.Spec.Antrea.AntreaConfigDataValue.WireGuard.Port
@@ -226,5 +270,9 @@ func mapAntreaConfigSpec(cluster *clusterv1beta1.Cluster, config *cniv1alpha1.An
 	configSpec.Antrea.AntreaConfigDataValue.FeatureGates.MultiCluster = config.Spec.Antrea.AntreaConfigDataValue.FeatureGates.MultiCluster
 	configSpec.Antrea.AntreaConfigDataValue.FeatureGates.SecondaryNetwork = config.Spec.Antrea.AntreaConfigDataValue.FeatureGates.SecondaryNetwork
 	configSpec.Antrea.AntreaConfigDataValue.FeatureGates.TrafficControl = config.Spec.Antrea.AntreaConfigDataValue.FeatureGates.TrafficControl
+
+	//nsx config
+	configSpec.AntreaNsx.Enable = config.Spec.AntreaNsx.Enable
+
 	return configSpec, nil
 }

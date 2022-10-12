@@ -7,13 +7,17 @@ package controllers
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/go-logr/logr"
 	yaml "gopkg.in/yaml.v3"
 	corev1 "k8s.io/api/core/v1"
+	rbacv1 "k8s.io/api/rbac/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
+	vsphere "sigs.k8s.io/cluster-api-provider-vsphere/apis/vmware/v1beta1"
 	clusterapiv1beta1 "sigs.k8s.io/cluster-api/api/v1beta1"
 	clusterapiutil "sigs.k8s.io/cluster-api/util"
 	clusterapipatchutil "sigs.k8s.io/cluster-api/util/patch"
@@ -24,6 +28,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/source"
 
+	nsxoperatorapi "github.com/vmware-tanzu/nsx-operator/pkg/apis/v1alpha1"
+
 	cutil "github.com/vmware-tanzu/tanzu-framework/addons/controllers/utils"
 	addonconfig "github.com/vmware-tanzu/tanzu-framework/addons/pkg/config"
 	"github.com/vmware-tanzu/tanzu-framework/addons/pkg/constants"
@@ -31,6 +37,24 @@ import (
 	"github.com/vmware-tanzu/tanzu-framework/addons/predicates"
 	cniv1alpha1 "github.com/vmware-tanzu/tanzu-framework/apis/addonconfigs/cni/v1alpha1"
 )
+
+const (
+	defaultTargetNameSpace = "vmware-system-antrea"
+	defaultSecretName      = "supervisor-cred"
+	defaultAPIGroup        = "nsx.vmware.com"
+	defaultResource        = "nsxserviceaccounts"
+	clusterNameLabel       = "tkg.tanzu.vmware.com/cluster-name"
+)
+
+// vsphereAntreaConfigProviderServiceAccountAggregatedClusterRole is the cluster role to assign permissions to capv provider
+var vsphereAntreaConfigProviderServiceAccountAggregatedClusterRole = &rbacv1.ClusterRole{
+	ObjectMeta: metav1.ObjectMeta{
+		Name: constants.VsphereAntreaConfigProviderServiceAccountAggregatedClusterRole,
+		Labels: map[string]string{
+			constants.CAPVClusterRoleAggregationRuleLabelSelectorKey: constants.CAPVClusterRoleAggregationRuleLabelSelectorValue,
+		},
+	},
+}
 
 // AntreaConfigReconciler reconciles a AntreaConfig object
 type AntreaConfigReconciler struct {
@@ -42,6 +66,8 @@ type AntreaConfigReconciler struct {
 
 // +kubebuilder:rbac:groups=addons.tanzu.vmware.com,resources=antreaconfigs,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=addons.tanzu.vmware.com,resources=antreaconfigs/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=vmware.infrastructure.cluster.x-k8s.io,resources=providerserviceaccounts,verbs=get;create;list;watch;update;patch;delete
+// +kubebuilder:rbac:groups=nsx.vmware.com,resources=nsxserviceaccounts,verbs=get;create;list;watch;update;patch;delete
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -130,6 +156,7 @@ func (r *AntreaConfigReconciler) ReconcileAntreaConfig(
 
 	// If AntreaConfig is marked for deletion, then no reconciliation is needed
 	if !antreaConfig.GetDeletionTimestamp().IsZero() {
+		r.deleteAccounts(ctx, antreaConfig)
 		return ctrl.Result{}, nil
 	}
 
@@ -167,10 +194,164 @@ func (r *AntreaConfigReconciler) ReconcileAntreaConfigNormal(
 		return err
 	}
 
+	if antreaConfig.Spec.AntreaNsx.BootstrapFrom.ProviderRef != nil && antreaConfig.Spec.AntreaNsx.BootstrapFrom.Inline != nil {
+		err := fmt.Errorf("AntreaNsxProvider can not be used with AntreaNsxInline in antreaConfig")
+		antreaConfig.Status.Message = err.Error()
+	}
 	// update status.secretRef
 	dataValueSecretName := util.GenerateDataValueSecretName(cluster.Name, constants.AntreaAddonName)
 	antreaConfig.Status.SecretRef = dataValueSecretName
 
+	if !antreaConfig.Spec.AntreaNsx.Enable {
+		r.Log.Info("antreaNsx is not enabled, there is no ProviderServiceAccount or NsxServiceAccount to be created")
+		r.deleteAccounts(ctx, antreaConfig)
+		return nil
+	}
+	err := r.confirmProviderServiceAccount(ctx, antreaConfig, cluster)
+	if err != nil {
+		return err
+	}
+	err = r.confirmNsxServiceAccount(ctx, antreaConfig, cluster)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func getClusterName(antreaConfig *cniv1alpha1.AntreaConfig) (name string, exists bool) {
+	name, exists = antreaConfig.Labels[clusterNameLabel]
+	if !exists {
+		index := strings.Index(antreaConfig.Name, "-antrea-package")
+		if index > 0 {
+			name = antreaConfig.Name[:index]
+			exists = true
+		}
+	}
+	return
+}
+
+func (r *AntreaConfigReconciler) confirmNsxServiceAccount(ctx context.Context, antreaConfig *cniv1alpha1.AntreaConfig, cluster *clusterapiv1beta1.Cluster) error {
+	account := &nsxoperatorapi.NSXServiceAccount{}
+
+	clusterName, exists := getClusterName(antreaConfig)
+	if !exists {
+		return fmt.Errorf("invalid antreaConfig Name")
+	}
+	account.Name = fmt.Sprintf("%s-antrea", clusterName)
+	account.Namespace = antreaConfig.Namespace
+	account.OwnerReferences = []metav1.OwnerReference{
+		{
+			APIVersion: cluster.APIVersion,
+			Kind:       cluster.Kind,
+			Name:       clusterName,
+			UID:        cluster.UID,
+		},
+	}
+
+	err := r.Client.Get(ctx, types.NamespacedName{
+		Namespace: account.Namespace,
+		Name:      account.Name,
+	}, account)
+	if err == nil {
+		r.Log.Info("NSXServiceAccount %s/%s already exists", account.Namespace, account.Name)
+		return nil
+	}
+	if err != nil && !apierrors.IsNotFound(err) {
+		r.Log.Info("failed to get NSXServiceAccount %s/%s", account.Namespace, account.Name)
+		return err
+	}
+
+	result, err := controllerutil.CreateOrPatch(ctx, r.Client, account, nil)
+	if err != nil {
+		r.Log.Error(err, "Error creating or patching NSXServiceAccount", account.Namespace, account.Name)
+	} else {
+		r.Log.Info(fmt.Sprintf("NSXServiceAccount %s/%s created %s", account.Namespace, account.Name, result))
+	}
+	return err
+}
+
+func (r *AntreaConfigReconciler) confirmProviderServiceAccount(ctx context.Context, antreaConfig *cniv1alpha1.AntreaConfig, cluster *clusterapiv1beta1.Cluster) error {
+	provider := &vsphere.ProviderServiceAccount{}
+	clusterName, exists := getClusterName(antreaConfig)
+	if !exists {
+		return fmt.Errorf("invalid antreaConfig Name")
+	}
+	vsphereCluster, err := cutil.VSphereClusterParavirtualForCAPICluster(ctx, r.Client, cluster)
+	if err != nil {
+		return err
+	}
+	providerServiceAccountRBACRules := []rbacv1.PolicyRule{
+		{
+			APIGroups:     []string{defaultAPIGroup},
+			Resources:     []string{defaultResource},
+			ResourceNames: []string{clusterName},
+			Verbs:         []string{"get", "list", "watch"},
+		},
+		{
+			APIGroups:     []string{""},
+			Resources:     []string{"secrets"},
+			ResourceNames: []string{fmt.Sprintf("%s-antrea-nsx-cert", clusterName)},
+			Verbs:         []string{"get", "list", "watch"},
+		},
+	}
+	_, err = controllerutil.CreateOrPatch(ctx, r.Client, vsphereAntreaConfigProviderServiceAccountAggregatedClusterRole, func() error {
+		vsphereAntreaConfigProviderServiceAccountAggregatedClusterRole.Rules = providerServiceAccountRBACRules
+		return nil
+	})
+	if err != nil {
+		r.Log.Error(err, "Error creating or patching cluster role", "name", vsphereAntreaConfigProviderServiceAccountAggregatedClusterRole)
+		return err
+	}
+	provider.Name = fmt.Sprintf("%s-antrea", clusterName)
+	provider.Namespace = antreaConfig.Namespace
+	provider.Spec = vsphere.ProviderServiceAccountSpec{
+		Ref: &corev1.ObjectReference{
+			APIVersion: cluster.APIVersion,
+			Kind:       cluster.Kind,
+			Name:       clusterName,
+			UID:        cluster.UID,
+		},
+		TargetNamespace:  defaultTargetNameSpace,
+		TargetSecretName: defaultSecretName,
+		Rules:            providerServiceAccountRBACRules,
+	}
+	result, err := controllerutil.CreateOrPatch(ctx, r.Client, provider, func() error {
+		return controllerutil.SetControllerReference(vsphereCluster, provider, r.Scheme)
+	})
+	if err != nil {
+		r.Log.Error(err, "Error creating or patching ProviderServiceAccount", provider.Namespace, provider.Name)
+	} else {
+		r.Log.Info(fmt.Sprintf("ProviderServiceAccount %s/%s created %s： %+v", provider.Namespace, provider.Name, result, provider))
+	}
+	return err
+}
+
+func (r *AntreaConfigReconciler) deleteAccounts(ctx context.Context, antreaConfig *cniv1alpha1.AntreaConfig) error {
+	if !antreaConfig.Spec.AntreaNsx.Enable {
+		r.Log.Info("antreaNsx is not enabled, there is no ProviderServiceAccount or NsxServiceAccount to be deleted")
+		return nil
+	}
+	account := &nsxoperatorapi.NSXServiceAccount{}
+	clusterName, exists := getClusterName(antreaConfig)
+	if !exists {
+		return fmt.Errorf("invalid antreaConfig Name")
+	}
+	account.Name = fmt.Sprintf("%s-antrea", clusterName)
+	account.Namespace = antreaConfig.Namespace
+	err := r.Client.Delete(ctx, account)
+	if err != nil {
+		r.Log.Error(err, "failed to delete NSXServiceAccount", account.Namespace, account.Name)
+		return err
+	}
+
+	provider := &vsphere.ProviderServiceAccount{}
+	provider.Name = fmt.Sprintf("%s-antrea", clusterName)
+	provider.Namespace = antreaConfig.Namespace
+	err = r.Client.Delete(ctx, provider)
+	if err != nil {
+		r.Log.Error(err, "failed to delete ProviderServiceAccount", provider.Namespace, provider.Name)
+		return err
+	}
 	return nil
 }
 
