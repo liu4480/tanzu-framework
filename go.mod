@@ -96,7 +96,7 @@ require (
 	k8s.io/client-go v0.23.5
 	k8s.io/utils v0.0.0-20220210201930-3a6ce19ff2f9
 	sigs.k8s.io/cluster-api v1.1.5
-	sigs.k8s.io/cluster-api-provider-aws v1.1.0
+	sigs.k8s.io/cluster-api-provider-aws v1.5.1
 	sigs.k8s.io/cluster-api-provider-azure v1.4.0
 	sigs.k8s.io/cluster-api-provider-vsphere v1.3.1
 	sigs.k8s.io/cluster-api/test v1.1.5
@@ -136,8 +136,8 @@ require (
 	github.com/apparentlymart/go-cidr v1.1.0 // indirect
 	github.com/asaskevich/govalidator v0.0.0-20210307081110-f21760c49a8d // indirect
 	github.com/avinetworks/sdk v0.0.0-20201123134013-c157ef55b6f7 // indirect
-	github.com/aws/amazon-vpc-cni-k8s v1.10.1 // indirect
-	github.com/aws/aws-sdk-go v1.40.56 // indirect
+	github.com/aws/amazon-vpc-cni-k8s v1.11.2 // indirect
+	github.com/aws/aws-sdk-go v1.43.29 // indirect
 	github.com/awslabs/goformation/v4 v4.19.5 // indirect
 	github.com/benbjohnson/clock v1.3.0 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
@@ -249,7 +249,7 @@ require (
 	golang.org/x/sys v0.0.0-20220811171246-fbc7d0a398ab // indirect
 	golang.org/x/time v0.0.0-20220224211638-0e9765cccd65 // indirect
 	golang.org/x/tools v0.1.12 // indirect
-	golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1 // indirect
+	golang.org/x/xerrors v0.0.0-20220517211312-f3a8303e98df // indirect
 	google.golang.org/api v0.63.0 // indirect
 	google.golang.org/appengine v1.6.7 // indirect
 	google.golang.org/genproto v0.0.0-20220308174144-ae0e22291548 // indirect
