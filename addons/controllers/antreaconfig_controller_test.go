@@ -17,8 +17,6 @@ import (
 	clusterapiv1beta1 "sigs.k8s.io/cluster-api/api/v1beta1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	nsxoperator "github.com/vmware-tanzu/nsx-operator/pkg/apis/v1alpha1"
-
 	cutil "github.com/vmware-tanzu/tanzu-framework/addons/controllers/utils"
 	"github.com/vmware-tanzu/tanzu-framework/addons/pkg/constants"
 	"github.com/vmware-tanzu/tanzu-framework/addons/pkg/util"
@@ -346,19 +344,7 @@ var _ = Describe("AntreaConfig Reconciler and Webhooks", func() {
 				return true
 			})
 
-			//check if nsxServiceAccount is created
-			By("create ProviderServiceAccount")
-			nsxServiceAccount := &nsxoperator.NSXServiceAccount{}
-			Eventually(func() bool {
-				serviceAccountKey := client.ObjectKey{
-					Namespace: defaultString,
-					Name:      fmt.Sprintf("%s-antrea", clusterName),
-				}
-				if err := k8sClient.Get(ctx, serviceAccountKey, nsxServiceAccount); err != nil {
-					return false
-				}
-				return true
-			}, waitTimeout, pollingInterval).Should(BeTrue())
+			// TODO: we shall check if nsxServiceAccount is created, but since it not registered, we do not check now
 		})
 
 	})

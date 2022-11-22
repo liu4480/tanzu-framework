@@ -288,7 +288,7 @@ type AntreaNsxBootstrapFrom struct {
 
 type AntreaNsxProvider struct {
 	// api version for nsxServiceAccount, its value is "nsx.vmware.com/v1alpha1" now
-	ApiVersion string `json:"apiVersion,omitempty"`
+	ApiGroup string `json:"apigroup,omitempty"`
 	// its value is NsxServiceAccount
 	Kind string `json:"kind,omitempty"`
 	// the name for NsxServiceAccount
@@ -300,15 +300,8 @@ type AntreaNsxInline struct {
 	NsxManagers []string `json:"nsxManagers,omitempty"`
 	// clusterName is the name for the created cluster
 	ClusterName string `json:"clusterName,omitempty"`
-	// nsxCert is cert files to access nsx manager
-	NsxCert NsxCertRef `json:"nsxCert,omitempty"`
-}
-
-type NsxCertRef struct {
-	// tls.crt is cert file to access nsx manager
-	TLSCert string `json:"tls.crt,omitempty"`
-	// tls.key is key file to access nsx manager
-	TLSKey string `json:"tls.key,omitempty"`
+	// nsxCertName is cert files to access nsx manager
+	NsxCertName string `json:"nsxCertName,omitempty"`
 }
 
 type AntreaNsxConfig struct {

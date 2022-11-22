@@ -293,16 +293,9 @@ spec:
                           clusterName:
                             description: clusterName is the name for the created cluster
                             type: string
-                          nsxCert:
-                            description: nsxCert is cert files to access nsx manager
-                            properties:
-                              tls.crt:
-                                description: tls.crt is cert file to access nsx manager
-                                type: string
-                              tls.key:
-                                description: tls.key is key file to access nsx manager
-                                type: string
-                            type: object
+                          nsxCertName:
+                            description: nsxCertName is cert files to access nsx manager
+                            type: string
                           nsxManagers:
                             description: nsxManagers is the list for nsx managers,
                               it can be either IP address or domain name
@@ -314,7 +307,7 @@ spec:
                         description: providerRef is used with uTKG, which will be
                           filled by uTKG Addon Controller
                         properties:
-                          apiVersion:
+                          apigroup:
                             description: api version for nsxServiceAccount, its value
                               is "nsx.vmware.com/v1alpha1" now
                             type: string

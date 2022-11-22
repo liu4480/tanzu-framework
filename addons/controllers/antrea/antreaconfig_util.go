@@ -39,6 +39,7 @@ type antreaNsx struct {
 type antreaNsxProvider struct {
 	ApiVersion string `yaml:"apiVersion,omitempty"`
 	Kind       string `yaml:"kind,omitempty"`
+	Name       string `yaml:"kind,omitempty"`
 }
 
 type AntreaNsxBootstrapFrom struct {
@@ -71,6 +72,7 @@ type antreaNsxInline struct {
 }
 
 type antreaNsxConfig struct {
+	InfraType string `yaml:"infraType,omitempty"`
 }
 
 type antreaEgress struct {
@@ -204,7 +206,7 @@ func (r *AntreaConfigReconciler) ClusterToAntreaConfig(o client.Object) []ctrl.R
 	return requests
 }
 
-func mapAntreaConfigSpec(cluster *clusterv1beta1.Cluster, config *cniv1alpha1.AntreaConfig) (*antreaConfigSpec, error) {
+func mapAntreaConfigSpec(cluster *clusterv1beta1.Cluster, config *cniv1alpha1.AntreaConfig, client client.Client) (*antreaConfigSpec, error) {
 	configSpec := &antreaConfigSpec{}
 
 	// Derive InfraProvider from the cluster
@@ -271,8 +273,7 @@ func mapAntreaConfigSpec(cluster *clusterv1beta1.Cluster, config *cniv1alpha1.An
 	configSpec.Antrea.AntreaConfigDataValue.FeatureGates.SecondaryNetwork = config.Spec.Antrea.AntreaConfigDataValue.FeatureGates.SecondaryNetwork
 	configSpec.Antrea.AntreaConfigDataValue.FeatureGates.TrafficControl = config.Spec.Antrea.AntreaConfigDataValue.FeatureGates.TrafficControl
 
-	//nsx config
-	configSpec.AntreaNsx.Enable = config.Spec.AntreaNsx.Enable
+	//todo add nsx config here once antreaNsx ia packaged into antrea
 
 	return configSpec, nil
 }
