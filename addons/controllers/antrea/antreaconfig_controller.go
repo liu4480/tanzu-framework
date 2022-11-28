@@ -156,7 +156,7 @@ func (r *AntreaConfigReconciler) ReconcileAntreaConfig(
 
 	// If AntreaConfig is marked for deletion, then no reconciliation is needed
 	if !antreaConfig.GetDeletionTimestamp().IsZero() {
-		r.deregisterAntreaNSX(ctx, antreaConfig)
+		r.deregisterAntreaNSX(ctx, antreaConfig, cluster)
 		return ctrl.Result{}, nil
 	}
 
@@ -198,6 +198,7 @@ func (r *AntreaConfigReconciler) ReconcileAntreaConfigNormal(
 		err := fmt.Errorf("providerRef and inline should not be both set in AntreaConfig.spec.antreaNsx.bootstrapFrom")
 		antreaConfig.Status.Message = err.Error()
 	}
+	antreaConfig.Status.Message = ""
 	// update status.secretRef
 	dataValueSecretName := util.GenerateDataValueSecretName(cluster.Name, constants.AntreaAddonName)
 	antreaConfig.Status.SecretRef = dataValueSecretName
@@ -228,17 +229,13 @@ func (r *AntreaConfigReconciler) getNSXServiceAccountName(clusterName string) st
 func (r *AntreaConfigReconciler) ensureNsxServiceAccount(ctx context.Context, antreaConfig *cniv1alpha1.AntreaConfig, cluster *clusterapiv1beta1.Cluster) error {
 	account := &nsxoperatorapi.NSXServiceAccount{}
 
-	clusterName, exists := getClusterName(antreaConfig)
-	if !exists {
-		return fmt.Errorf("invalid antreaConfig Name")
-	}
-	account.Name = r.getNSXServiceAccountName(clusterName)
+	account.Name = r.getNSXServiceAccountName(cluster.Name)
 	account.Namespace = antreaConfig.Namespace
 	account.OwnerReferences = []metav1.OwnerReference{
 		{
 			APIVersion: cluster.APIVersion,
 			Kind:       cluster.Kind,
-			Name:       clusterName,
+			Name:       cluster.Name,
 			UID:        cluster.UID,
 		},
 	}
@@ -267,16 +264,14 @@ func (r *AntreaConfigReconciler) ensureNsxServiceAccount(ctx context.Context, an
 
 func (r *AntreaConfigReconciler) ensureProviderServiceAccount(ctx context.Context, antreaConfig *cniv1alpha1.AntreaConfig, cluster *clusterapiv1beta1.Cluster) error {
 	provider := &vsphere.ProviderServiceAccount{}
-	clusterName, exists := getClusterName(antreaConfig)
-	if !exists {
-		return fmt.Errorf("invalid antreaConfig Name")
-	}
 	vsphereCluster, err := cutil.VSphereClusterParavirtualForCAPICluster(ctx, r.Client, cluster)
 	if err != nil {
 		return err
 	}
+	clusterName, _ := getClusterName(antreaConfig)
 	nsxSAName := clusterName + "-antrea"
 	nsxSecretName := clusterName + "-antrea-nsx-cert"
+	clusterName = vsphereCluster.Name
 	providerServiceAccountRBACRules := []rbacv1.PolicyRule{
 		{
 			APIGroups:     []string{nsxServiceAccountAPIGroup},
@@ -326,7 +321,7 @@ func (r *AntreaConfigReconciler) ensureProviderServiceAccount(ctx context.Contex
 func (r *AntreaConfigReconciler) registerAntreaNSX(ctx context.Context, antreaConfig *cniv1alpha1.AntreaConfig, cluster *clusterapiv1beta1.Cluster) error {
 	if !antreaConfig.Spec.AntreaNsx.Enable || antreaConfig.Spec.AntreaNsx.BootstrapFrom.Inline != nil {
 		r.Log.Info("antreaNsx is not enabled or inline is set, there is no ProviderServiceAccount or NsxServiceAccount to be created")
-		r.deregisterAntreaNSX(ctx, antreaConfig)
+		r.deregisterAntreaNSX(ctx, antreaConfig, cluster)
 		return nil
 	}
 	if antreaConfig.Spec.AntreaNsx.BootstrapFrom.ProviderRef != nil {
@@ -339,6 +334,7 @@ func (r *AntreaConfigReconciler) registerAntreaNSX(ctx context.Context, antreaCo
 			return err
 		}
 	}
+	antreaConfig.Status.Message = ""
 	err := r.ensureProviderServiceAccount(ctx, antreaConfig, cluster)
 	if err != nil {
 		return err
@@ -347,27 +343,35 @@ func (r *AntreaConfigReconciler) registerAntreaNSX(ctx context.Context, antreaCo
 	return err
 }
 
-func (r *AntreaConfigReconciler) deregisterAntreaNSX(ctx context.Context, antreaConfig *cniv1alpha1.AntreaConfig) error {
+func (r *AntreaConfigReconciler) deregisterAntreaNSX(ctx context.Context, antreaConfig *cniv1alpha1.AntreaConfig, cluster *clusterapiv1beta1.Cluster) error {
 	if !antreaConfig.Spec.AntreaNsx.Enable {
 		r.Log.Info("antreaNsx is not enabled, there is no ProviderServiceAccount or NsxServiceAccount to be deleted")
 		return nil
 	}
-	account := &nsxoperatorapi.NSXServiceAccount{}
+	vsphereCluster, err := cutil.VSphereClusterParavirtualForCAPICluster(ctx, r.Client, cluster)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil
+		}
+		return err
+	}
 	clusterName, exists := getClusterName(antreaConfig)
 	if !exists {
 		return fmt.Errorf("invalid antreaConfig Name")
 	}
+	account := &nsxoperatorapi.NSXServiceAccount{}
+
 	account.Name = r.getNSXServiceAccountName(clusterName)
 	account.Namespace = antreaConfig.Namespace
-	err := r.Client.Delete(ctx, account)
+	err = r.Client.Delete(ctx, account)
 	if err != nil && !apierrors.IsNotFound(err) {
 		r.Log.Error(err, "failed to delete NSXServiceAccount", account.Namespace, account.Name)
 		return err
 	}
 
 	provider := &vsphere.ProviderServiceAccount{}
-	provider.Name = r.getProviderServiceAccountName(clusterName)
-	provider.Namespace = antreaConfig.Namespace
+	provider.Name = r.getProviderServiceAccountName(vsphereCluster.Name)
+	provider.Namespace = vsphereCluster.Namespace
 	err = r.Client.Delete(ctx, provider)
 	if err != nil && !apierrors.IsNotFound(err) {
 		r.Log.Error(err, "failed to delete ProviderServiceAccount", provider.Namespace, provider.Name)
