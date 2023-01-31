@@ -39,7 +39,7 @@ require (
 	github.com/vmware-tanzu/tanzu-framework/tkg v0.0.0-00010101000000-000000000000
 	github.com/vmware-tanzu/tanzu-framework/tkr v0.0.0-00010101000000-000000000000
 	golang.org/x/oauth2 v0.3.0
-	google.golang.org/grpc v1.50.1
+	google.golang.org/grpc v1.52.3
 	google.golang.org/protobuf v1.28.1
 	gopkg.in/yaml.v2 v2.4.0
 	k8s.io/api v0.24.4
@@ -53,7 +53,7 @@ require (
 	cloud.google.com/go v0.107.0 // indirect
 	cloud.google.com/go/compute v1.12.1 // indirect
 	cloud.google.com/go/compute/metadata v0.2.1 // indirect
-	cloud.google.com/go/iam v0.6.0 // indirect
+	cloud.google.com/go/iam v0.7.0 // indirect
 	cloud.google.com/go/storage v1.27.0 // indirect
 	github.com/AlecAivazis/survey/v2 v2.3.5 // indirect
 	github.com/Azure/azure-sdk-for-go v66.0.0+incompatible // indirect
@@ -235,7 +235,7 @@ require (
 	gomodules.xyz/jsonpatch/v2 v2.2.0 // indirect
 	google.golang.org/api v0.102.0 // indirect
 	google.golang.org/appengine v1.6.7 // indirect
-	google.golang.org/genproto v0.0.0-20221027153422-115e99e71e1c // indirect
+	google.golang.org/genproto v0.0.0-20221118155620-16455021b5e6 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/ini.v1 v1.66.4 // indirect
 	gopkg.in/tomb.v1 v1.0.0-20141024135613-dd632973f1e7 // indirect
